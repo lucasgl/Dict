@@ -50,7 +50,7 @@ public class TalkRed : ISystemTalker
         this.repo = repo;
     }
         int count = 0;
-    private PersonRepo repo;
+    private readonly PersonRepo repo;
 
     public void Say(string msg) {
         Console.BackgroundColor = repo.GetColor(1);
@@ -65,7 +65,7 @@ public class TalkBlue : ISystemTalker
         this.repo = repo;
     }
         int count = 0;
-    private PersonRepo repo;
+    private readonly PersonRepo repo;
     public void Say(string msg) {
         Console.BackgroundColor = repo.GetColor(0);
         Console.WriteLine("{0} {1}", msg, count++);
@@ -73,7 +73,7 @@ public class TalkBlue : ISystemTalker
 }
 
 public record Person(string FirstName, string LastName) {
-    public List<Vaccine> Vaccinations {get;set;}
+    public List<Vaccine>? Vaccinations {get;set;}
 }
 
 public record Vaccine(string Name);
@@ -101,7 +101,8 @@ public class PersonRepo
     }
 
     public Person AddVaccine(int id, string vaccineName) {
-        dict[id].Vaccinations.Add(new Vaccine(vaccineName));
+        if(dict[id].Vaccinations == null) dict[id].Vaccinations = new List<Vaccine>();
+        dict[id].Vaccinations?.Add(new Vaccine(vaccineName));
         return dict[id];
     }
 
@@ -128,7 +129,7 @@ public class PersonRepo
     }
 
     public void LoadData() {
-        dict = (Dictionary<int, Person>)JsonSerializer.Deserialize<Dictionary<int, Person>>(File.ReadAllText("data.db"));
+        dict = JsonSerializer.Deserialize<Dictionary<int, Person>>(File.ReadAllText("data.db")) ?? dict; //if null reassign to itself;
     }
 }
 
@@ -139,8 +140,8 @@ public interface ISystemTalker
 
 [ApiController]
 public class TalkerController {
-    ISystemTalker talker;
-    private PersonRepo personRepo;
+    readonly ISystemTalker talker;
+    private readonly PersonRepo personRepo;
 
     public TalkerController(ISystemTalker talker,PersonRepo personRepo)
     {
