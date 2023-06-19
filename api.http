@@ -1,0 +1,15 @@
+GET https://localhost:5001/people
+
+###
+
+POST  https://localhost:5001/addperson
+content-type: application/json
+
+{
+    "firstName": "Lucas",
+    "lastName": "Locatelli"
+}
+
+###
+
+GET  https://localhost:5001/addvaccine/3/flu
