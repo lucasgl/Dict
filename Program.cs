@@ -1,12 +1,14 @@
 ﻿
 
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddAWSTalker();
 //builder.Services.AddAzureTalker();
-builder.Services.AddScoped<PersonRepo>();
+builder.Services.AddSingleton<PersonRepo>();
 
 var app = builder.Build();
 
@@ -70,14 +72,24 @@ public class TalkBlue : ISystemTalker
     }
 }
 
-public record Person(string FirstName, string LastName);
+public record Person(string FirstName, string LastName) {
+    public List<Vaccine> Vaccinations {get;set;}
+}
+
+public record Vaccine(string Name);
 
 public class PersonRepo
 {
-    Dictionary<int, Person> dict = new Dictionary<int, Person>() {
+    Dictionary<int, Person> dict = new() {
         {0,new ("Ryan", "Anderson")},
         {1,new ("Dani", "Trugilo")},
     };
+
+    public PersonRepo()
+    {
+        LoadData();
+    }
+
     public Person GetPerson(int id)
     {
         return dict[id];
@@ -88,6 +100,11 @@ public class PersonRepo
         return person;
     }
 
+    public Person AddVaccine(int id, string vaccineName) {
+        dict[id].Vaccinations.Add(new Vaccine(vaccineName));
+        return dict[id];
+    }
+
     public ConsoleColor GetColor(int id)
     {
         var dict = new Dictionary<int, ConsoleColor>() {
@@ -95,6 +112,23 @@ public class PersonRepo
             {1,ConsoleColor.DarkYellow}
         };
         return dict[id];
+    }
+
+    public List<Person> GetPeople() 
+    {
+        return dict.Values.ToList();
+    }
+
+    public void PersistData() {
+        File.WriteAllText("data.db", JsonSerializer.Serialize(dict));
+    }
+
+    public void InitializeData() {
+        File.WriteAllText("data.db", JsonSerializer.Serialize(dict));
+    }
+
+    public void LoadData() {
+        dict = (Dictionary<int, Person>)JsonSerializer.Deserialize<Dictionary<int, Person>>(File.ReadAllText("data.db"));
     }
 }
 
@@ -126,10 +160,23 @@ public class TalkerController {
         return $"GoodBye {personRepo.GetPerson(personId).FirstName}";
     }
 
-    [HttpPost("AddPerson/{personId}")]
+    [HttpGet("People")]
+    public List<Person> People() {
+        return personRepo.GetPeople();
+    }
+
+    [HttpPost("AddPerson")]
     public string AddPerson(Person person) {
         personRepo.AddPerson(person);
+        personRepo.PersistData();
         return $"{person.FirstName} Added!!";
+    }
+
+    [HttpGet("AddVaccine/{personId}/{vaccineName}")]
+    public Person AddPerson(int personId, string vaccineName) {
+        var person = personRepo.AddVaccine(personId, vaccineName);
+        personRepo.PersistData();
+        return person;
     }
 
 }
