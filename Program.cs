@@ -1,6 +1,7 @@
 ﻿
 
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -72,17 +73,31 @@ public class TalkBlue : ISystemTalker
     }
 }
 
+
+public record PersonResult(string FirstName, string LastName, List<Vaccine>? Vaccines);
+
 public record Person(string FirstName, string LastName) {
-    public List<Vaccine>? Vaccinations {get;set;}
+    
+    public List<int> VaccineIds {get;set;} = new List<int>();
+    
+    // [JsonIgnore]
+    // public virtual List<Vaccine>? Vaccinations {get;set;}
 }
 
 public record Vaccine(string Name);
 
 public class PersonRepo
 {
-    Dictionary<int, Person> dict = new() {
+    List<object> _savedData = new List<object>();
+
+    Dictionary<int, Person> people = new() {
         {0,new ("Ryan", "Anderson")},
-        {1,new ("Dani", "Trugilo")},
+        {1,new ("Dani", "Trugilo")}
+    };
+
+    Dictionary<int, Vaccine> vaccines = new() {
+        {0,new ("Covid")},
+        {1,new ("Flu")}
     };
 
     public PersonRepo()
@@ -90,20 +105,32 @@ public class PersonRepo
         LoadData();
     }
 
-    public Person GetPerson(int id)
+    public PersonResult GetPerson(int id)
     {
-        return dict[id];
+        return new(people[id].FirstName, people[id].LastName, 
+            vaccines.Where(v => people[id].VaccineIds.Contains(v.Key)).Select(i => i.Value).ToList());
     }
 
     public Person AddPerson(Person person) {
-        dict.Add(dict.Keys.Max() + 1, person);
+        people.Add(people.Keys.Max() + 1, person);
         return person;
     }
 
-    public Person AddVaccine(int id, string vaccineName) {
-        if(dict[id].Vaccinations == null) dict[id].Vaccinations = new List<Vaccine>();
-        dict[id].Vaccinations?.Add(new Vaccine(vaccineName));
-        return dict[id];
+    public (Person?, bool) AddVaccineToPerson(int id, string vaccineName) {
+        try {
+            var vaccine = vaccines.First(vaccine => vaccine.Value.Name == vaccineName);
+            if(people[id].VaccineIds == null) people[id].VaccineIds = new List<int>();
+            people[id].VaccineIds?.Add(vaccine.Key);
+            return (people[id], true);
+        }
+        catch(InvalidOperationException) {
+            return (null, false);
+        }
+    }
+
+    public Vaccine AddVaccine(Vaccine vaccine) {
+        vaccines.Add(vaccines.Keys.Max() + 1, vaccine);
+        return vaccine;
     }
 
     public ConsoleColor GetColor(int id)
@@ -115,22 +142,45 @@ public class PersonRepo
         return dict[id];
     }
 
-    public List<Person> GetPeople() 
+
+    /// <summary>
+    /// Convert List<Person> into a List<PersonResult>
+    /// Check how it's done in GetPerson and do the same here. it needs to see the vaccine list.
+    /// </summary>
+    /// <returns></returns>
+    public List<PersonResult> GetPeople() 
     {
-        return dict.Values.ToList();
+        return people.Values.ToList();
     }
 
     public void PersistData() {
-        File.WriteAllText("data.db", JsonSerializer.Serialize(dict));
+        _savedData = new List<object>{people,vaccines};
+        File.WriteAllText("data.json", JsonSerializer.Serialize(_savedData));
     }
 
     public void InitializeData() {
-        File.WriteAllText("data.db", JsonSerializer.Serialize(dict));
+        File.WriteAllText("data.json", JsonSerializer.Serialize(_savedData));
     }
 
     public void LoadData() {
-        dict = JsonSerializer.Deserialize<Dictionary<int, Person>>(File.ReadAllText("data.db")) ?? dict; //if null reassign to itself;
+        _savedData = new List<object>{people,vaccines};
+        if(File.Exists("data.json")) {
+            _savedData = JsonSerializer.Deserialize<List<object>>(File.ReadAllText("data.json")) ?? _savedData;
+            people = ((JsonElement)_savedData[0]).Deserialize<Dictionary<int,Person>>();
+            vaccines = ((JsonElement)_savedData[1]).Deserialize<Dictionary<int,Vaccine>>();
+        }
+        else {
+            InitializeData();
+            people = (Dictionary<int,Person>)_savedData[0];
+            vaccines = (Dictionary<int,Vaccine>)_savedData[1];
+        }
     }
+
+    public List<Vaccine> GetVaccines()
+    {
+        return vaccines.Values.ToList();
+    }
+
 }
 
 public interface ISystemTalker 
@@ -162,7 +212,7 @@ public class TalkerController {
     }
 
     [HttpGet("People")]
-    public List<Person> People() {
+    public List<PersonResult> People() {
         return personRepo.GetPeople();
     }
 
@@ -173,11 +223,28 @@ public class TalkerController {
         return $"{person.FirstName} Added!!";
     }
 
-    [HttpGet("AddVaccine/{personId}/{vaccineName}")]
-    public Person AddPerson(int personId, string vaccineName) {
-        var person = personRepo.AddVaccine(personId, vaccineName);
-        personRepo.PersistData();
-        return person;
+    [HttpGet("AddVaccineToPerson/{personId}/{vaccineName}")]
+    public IActionResult AddVaccineToPerson(int personId, string vaccineName) {
+        var (person,result) = personRepo.AddVaccineToPerson(personId, vaccineName);
+        if(result) {
+            personRepo.PersistData();
+            return new OkObjectResult(person);
+        }
+        else {
+            return new BadRequestObjectResult($"No vaccine found with name {vaccineName}");
+        }
+    }
+
+    [HttpGet("AddVaccine/{vaccineName}")]
+    public Vaccine AddVaccine(string vaccineName) {
+        Vaccine vaccine = new (vaccineName);
+        personRepo.AddVaccine(vaccine);
+        return vaccine; 
+    }
+
+    [HttpGet("Vaccines")]
+    public List<Vaccine> Vaccines() {
+        return personRepo.GetVaccines();
     }
 
 }

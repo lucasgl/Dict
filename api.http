@@ -12,4 +12,8 @@ content-type: application/json
 
 ###
 
-GET  https://localhost:5001/addvaccine/3/flu
+GET  https://localhost:5001/addvaccinetoperson/0/Flu
+
+###
+
+GET https://localhost:5001/vaccines
